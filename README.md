@@ -3,6 +3,12 @@
 오래된 저화질 영상을 AI로 4배 해상도로 선명하게 복원합니다.
 [RealBasicVSR](https://github.com/ckkelvinchan/RealBasicVSR) (CVPR 2022, Apache-2.0) 모델을 윈도우에서 설치 없이 가깝게, 더블클릭과 드래그만으로 쓸 수 있게 만든 래퍼입니다.
 
+## 결과 예시
+
+![원본(좌)과 RealBasicVSR 4배 복원 결과(우) 비교](before-after.svg)
+
+같은 영상의 같은 장면입니다. 왼쪽은 320x240 원본을 그대로 확대한 것, 오른쪽은 이 도구로 1280x960으로 복원한 결과입니다.
+
 ## 필요 사양
 
 - Windows 64비트
