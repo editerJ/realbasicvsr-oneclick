@@ -2,11 +2,16 @@
 # 사용: python compare_gif.py 원본.avi [보정본.mp4]
 #   - 파일 1개만 주면 같은 폴더에서 짝(이름_영상보정.mp4)을 자동으로 찾음
 #   - 파일 2개 주면 이름에 _영상보정 이 들어간 쪽이 보정본
-import os, sys, shutil, subprocess
+# v2: 회전 메타데이터 수동 적용(자동회전 비활성화 후 명시 회전, 보정본에도 같은 회전 적용)
+#     좌우 시간 정렬은 프레임 번호 기준 (보정본은 원본과 프레임 수가 같으므로 프레임이 곧 시간축)
+import os, re, sys, shutil, subprocess
 
 SUFFIX = '_영상보정'
 EXTS = ['.mp4', '.avi', '.mov', '.mkv', '.mpg', '.mpeg', '.mts', '.wmv']
 FONT = os.environ.get('COMPARE_GIF_FONT', 'C\\:/Windows/Fonts/malgun.ttf')
+MAXFRAMES = 240   # 각 쪽 앞 240프레임까지 (30fps 기준 앞 8초 분량)
+STEP = 3          # 3프레임마다 1장 추림
+GIF_FPS = 10
 
 def find_pair(path):
     d = os.path.dirname(os.path.abspath(path))
@@ -37,12 +42,29 @@ def find_ffmpeg():
     import imageio_ffmpeg
     return imageio_ffmpeg.get_ffmpeg_exe()
 
-def build_filter(dur, w, h, with_labels):
-    cell = f'scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,fps=10'
-    g = (f'[0:v]trim=duration={dur},setpts=PTS-STARTPTS,{cell}[l];'
-         f'[1:v]trim=duration={dur},setpts=PTS-STARTPTS,{cell}[r];'
-         f'[l][r]hstack=2[hs];')
-    bar = f'pad=iw:ih+38:0:38:color=0x141414'
+def probe_rotation(ff, path):
+    try:
+        r = subprocess.run([ff, '-hide_banner', '-i', path],
+                           capture_output=True, text=True, encoding='utf-8', errors='replace')
+        txt = r.stderr or ''
+        m = re.search(r'rotate\s*:\s*(-?\d+)', txt)
+        if not m:
+            m = re.search(r'displaymatrix: rotation of (-?[\d.]+) degrees', txt)
+        if m:
+            return int(float(m.group(1))) % 360
+    except Exception:
+        pass
+    return 0
+
+def rotation_filter(deg):
+    return {90: 'transpose=1', 270: 'transpose=2', 180: 'hflip,vflip'}.get(deg, '')
+
+def build_filter(w, h, rot, with_labels):
+    rf = (rotation_filter(rot) + ',') if rot else ''
+    pick = f"select='lt(n,{MAXFRAMES})*not(mod(n,{STEP}))',setpts=N/({GIF_FPS}*TB)"
+    cell = f'scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black'
+    g = f'[0:v]{rf}{pick},{cell}[l];[1:v]{rf}{pick},{cell}[r];[l][r]hstack=2[hs];'
+    bar = 'pad=iw:ih+38:0:38:color=0x141414'
     if with_labels:
         bar += (f",drawtext=fontfile='{FONT}':text='원본':fontcolor=white:fontsize=26:x=14:y=7"
                 f",drawtext=fontfile='{FONT}':text='보정본':fontcolor=white:fontsize=26:x={w+14}:y=7")
@@ -51,9 +73,10 @@ def build_filter(dur, w, h, with_labels):
     g += '[n][pal]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle[out]'
     return g
 
-def make_gif(ff, orig, enh, out, dur, w, h, with_labels):
-    cmd = [ff, '-y', '-loglevel', 'error', '-i', orig, '-i', enh,
-           '-filter_complex', build_filter(dur, w, h, with_labels),
+def make_gif(ff, orig, enh, out, w, h, rot, with_labels):
+    cmd = [ff, '-y', '-loglevel', 'error',
+           '-noautorotate', '-i', orig, '-noautorotate', '-i', enh,
+           '-filter_complex', build_filter(w, h, rot, with_labels),
            '-map', '[out]', out]
     r = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
     return r.returncode == 0 and os.path.exists(out), r.stderr.strip()
@@ -83,8 +106,11 @@ def main():
     print('보정본:', enh)
     print('출력  :', out)
     ff = find_ffmpeg()
+    rot = probe_rotation(ff, orig) or probe_rotation(ff, enh)
+    if rot:
+        print(f'회전 메타데이터 감지: {rot}도 - 바로 세워서 합칩니다')
     for labels in (True, False):
-        ok, err = make_gif(ff, orig, enh, out, 8, 480, 360, labels)
+        ok, err = make_gif(ff, orig, enh, out, 480, 360, rot, labels)
         if ok:
             break
         if labels:
@@ -95,7 +121,7 @@ def main():
     size = os.path.getsize(out)
     if size > 20 * 1024 * 1024:
         print('GIF가 20MB를 넘어서 더 작게 다시 만듭니다...')
-        ok, err = make_gif(ff, orig, enh, out, 6, 400, 300, labels)
+        ok, err = make_gif(ff, orig, enh, out, 400, 300, rot, labels)
         if ok:
             size = os.path.getsize(out)
     print(f'[완료] {out} ({size/1024/1024:.1f}MB)')
