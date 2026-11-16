@@ -1,0 +1,10 @@
+이 프로젝트는 아래 오픈소스의 코드 일부를 포함합니다 (Apache License 2.0):
+
+- open-mmlab/mmagic (https://github.com/open-mmlab/mmagic)
+  Copyright (c) OpenMMLab. All rights reserved.
+  포함된 코드: RealBasicVSRNet, BasicVSRNet, SPyNet 등 모델 구조
+  (rbvsr_standalone.py 안에 mmagic 소스를 정리해 넣었고, 원본 라이선스는 유지됩니다)
+
+- RealBasicVSR 논문 및 공식 구현 (https://github.com/ckkelvinchan/RealBasicVSR)
+  Kelvin C.K. Chan et al., "Investigating Tradeoffs in Real-World Video Super-Resolution", CVPR 2022
+  가중치 파일은 OpenMMLab 공식 배포본을 설치 시 다운로드합니다.
